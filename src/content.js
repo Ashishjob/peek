@@ -24,6 +24,14 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
     case 'clearHighlights':
       clearHighlights();
       break;
+    case 'triggerSemanticSearchShortcut':
+      const query = prompt("🔍 Enter search query for peek:");
+      if (query) {
+        handleSearch(query, 0.7, (res) => {
+          console.log('[peek] Keyboard search results:', res);
+        });
+      }
+      break;
   }
 });
 

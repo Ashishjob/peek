@@ -3,15 +3,14 @@
 // Listen for keyboard shortcuts
 chrome.commands.onCommand.addListener((command) => {
   if (command === "open_semantic_search") {
-    console.log("Semantic search command triggered.");
-    // You can send a message to the content script here instead
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       chrome.tabs.sendMessage(tabs[0].id, {
-        action: "triggerSemanticSearch"
+        action: "triggerSemanticSearchShortcut"
       });
     });
   }
 });
+
 
 // Handle messages from popup or content script
 chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
