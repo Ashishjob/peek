@@ -1,31 +1,18 @@
 {
-  "name": "peek",
-  "description": "Semantic Searching Ctrl-F",
-  "version": "1.0",
-  "manifest_version": 3,
-  "action": {
-    "default_popup": "peekModal.html",
-    "default_icon": "peekLogo.png"
-  },
-  "icons": {
-    "16": "images/icon16.png",
-    "32": "images/icon32.png",
-    "48": "images/icon48.png",
-    "128": "images/icon128.png"
-  },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["scripts/content.js"]
-    }
-  ],
-  "commands": {
-    "toggle-feature": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+F",
-        "mac": "Command+Shift+F"
-      },
-      "description": "Toggle peek"
-    }
+    "manifest_version": 3,
+    "name": "Peek Demo",
+    "version": "1.0",
+    "description": "Test search highlight",
+    "permissions": ["activeTab", "scripting"],
+    "action": {
+      "default_popup": "popup.html"
+    },
+    "content_scripts": [
+      {
+        "matches": ["<all_urls>"],
+        "js": ["content.js"],
+        "run_at": "document_idle"
+      }
+    ]
   }
-}
+  
