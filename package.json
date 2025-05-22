@@ -1,31 +1,5 @@
 {
-  "name": "peek-semantic-search",
-  "version": "0.1.0",
-  "description": "AI-powered semantic search Chrome extension",
-  "main": "background.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --config webpack.config.js",
-    "watch": "webpack --watch --config webpack.config.js"
-  },
-  "keywords": [
-    "chrome-extension",
-    "semantic-search",
-    "ai",
-    "embeddings"
-  ],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
-    "@xenova/transformers": "^2.8.0"
-  },
-  "devDependencies": {
-    "@babel/core": "^7.27.1",
-    "@babel/preset-env": "^7.27.2",
-    "@types/chrome": "^0.0.246",
-    "babel-loader": "^10.0.0",
-    "copy-webpack-plugin": "^11.0.0",
-    "webpack": "^5.99.9",
-    "webpack-cli": "^5.1.4"
+    "chrome-types": "^0.1.351"
   }
 }
