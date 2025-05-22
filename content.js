@@ -30,22 +30,49 @@ function highlightMatches(query) {
   clearHighlights();
 
   const regex = new RegExp(escapeRegExp(query), "gi");
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
 
+  // Get a snapshot of all text nodes first
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+  const nodes = [];
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
-
-    if (!parent || ['SCRIPT', 'STYLE', 'NOSCRIPT'].includes(parent.tagName)) continue;
-
-    if (regex.test(node.nodeValue)) {
-      const span = document.createElement("span");
-      span.innerHTML = node.nodeValue.replace(regex, match => `<mark class="peek-highlight">${match}</mark>`);
-      parent.replaceChild(span, node);
-    }
+    if (!parent || ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME'].includes(parent.tagName)) continue;
+    if (!node.nodeValue.trim()) continue;
+    nodes.push(node);
   }
 
-  currentHighlights = Array.from(document.querySelectorAll("mark.peek-highlight"));
+  for (const node of nodes) {
+    const matches = [...node.nodeValue.matchAll(regex)];
+    if (matches.length === 0) continue;
+
+    const frag = document.createDocumentFragment();
+    let lastIndex = 0;
+
+    for (const match of matches) {
+      const start = match.index;
+      const end = start + match[0].length;
+
+      if (start > lastIndex) {
+        frag.appendChild(document.createTextNode(node.nodeValue.slice(lastIndex, start)));
+      }
+
+      const mark = document.createElement('mark');
+      mark.className = 'peek-highlight';
+      mark.textContent = match[0];
+      frag.appendChild(mark);
+
+      lastIndex = end;
+    }
+
+    if (lastIndex < node.nodeValue.length) {
+      frag.appendChild(document.createTextNode(node.nodeValue.slice(lastIndex)));
+    }
+
+    node.parentNode.replaceChild(frag, node);
+  }
+
+  currentHighlights = Array.from(document.querySelectorAll('mark.peek-highlight'));
 
   if (currentHighlights.length > 0) {
     currentIndex = 0;
@@ -80,15 +107,37 @@ function goToPrev() {
   scrollToCurrent();
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "highlightSearch") {
-    highlightMatches(request.query.trim());
-    sendResponse({ status: "highlighted", count: currentHighlights.length });
-  } else if (request.action === "nextMatch") {
-    goToNext();
-  } else if (request.action === "prevMatch") {
-    goToPrev();
-  } else if (request.action === "clearHighlights") {
-    clearHighlights();
-  }
+window.addEventListener("load", () => {
+  console.log("[peek] content.js ready after load");
+  initPeekContent();
 });
+
+function initPeekContent() {
+  const style = document.createElement('style');
+  style.textContent = `
+    mark.peek-highlight {
+      background-color: yellow;
+      padding: 0 2px;
+      border-radius: 3px;
+    }
+  `;
+  document.head.appendChild(style);
+
+  // Then move your global vars + functions (highlightMatches, goToNext, etc.)
+  // inside or below this function so they get defined only after page is ready
+
+  // Keep this listener last
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "highlightSearch") {
+      highlightMatches(request.query.trim());
+      sendResponse({ status: "highlighted", count: currentHighlights.length });
+    } else if (request.action === "nextMatch") {
+      goToNext();
+    } else if (request.action === "prevMatch") {
+      goToPrev();
+    } else if (request.action === "clearHighlights") {
+      clearHighlights();
+    }
+  });
+}
+

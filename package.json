@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "chrome-types": "^0.1.351"
+    "chrome-types": "^0.1.351",
+    "pdfjs-dist": "^5.1.91"
   }
 }
