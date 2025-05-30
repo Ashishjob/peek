@@ -1,11 +1,29 @@
 {
     "manifest_version": 3,
-    "name": "Peek Demo",
-    "version": "1.0",
-    "description": "Test search highlight",
-    "permissions": ["activeTab", "scripting"],
+    "name": "Peek Demo with Semantic Search",
+    "version": "2.0",
+    "icons": {
+      "16": "images/icon16.png",
+      "32": "images/icon32.png",
+      "48": "images/icon48.png",
+      "128": "images/icon128.png"
+    },
+    "description": "Advanced search with keyword and semantic highlighting",
+    "permissions": [
+      "activeTab",
+      "scripting",
+      "storage"
+    ],
+    "host_permissions": [
+      "*://localhost/*",
+      "https://api-inference.huggingface.co/*",
+      "https://api.openai.com/*"
+    ],
     "action": {
       "default_popup": "popup.html"
+    },
+    "background": {
+      "service_worker": "background.js"
     },
     "content_scripts": [
       {
