@@ -1,6 +1,9 @@
 {
   "dependencies": {
     "chrome-types": "^0.1.351",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
     "pdfjs-dist": "^5.1.91"
   }
 }

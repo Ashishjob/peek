@@ -40,24 +40,24 @@ function extractPageContent() {
     null,
     false
   );
-  
+
   const textNodes = [];
   const paragraphs = [];
   let currentParagraph = '';
-  
+
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
-    
+
     if (!parent || ["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME"].includes(parent.tagName)) {
       continue;
     }
-    
+
     const text = node.nodeValue.trim();
     if (!text) continue;
-    
+
     textNodes.push({ node, text });
-    
+
     // Group text into paragraphs for semantic search
     if (parent.tagName === 'P' || parent.tagName === 'DIV' || parent.tagName === 'SPAN') {
       if (currentParagraph && text) {
@@ -65,10 +65,9 @@ function extractPageContent() {
       } else if (text) {
         currentParagraph = text;
       }
-      
-      // End paragraph on block elements
+
       if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(parent.tagName)) {
-        if (currentParagraph.length > 20) { // Only include substantial paragraphs
+        if (currentParagraph.length > 20) {
           paragraphs.push({
             text: currentParagraph,
             element: parent
@@ -78,9 +77,26 @@ function extractPageContent() {
       }
     }
   }
-  
+
   return { textNodes, paragraphs };
 }
+
+// ✅ Safe call to store embeddings on page load
+async function sendContentToBackground() {
+  try {
+    const { paragraphs } = extractPageContent();
+    await chrome.runtime.sendMessage({
+      action: 'storeEmbeddings',
+      content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
+    });
+    console.log("[peek] Content sent to background for indexing.");
+  } catch (err) {
+    console.error("[peek] Failed to store embeddings:", err);
+  }
+}
+
+// 👇 Safely trigger it ONCE when content.js loads
+sendContentToBackground();
 
 // Perform semantic search via Elasticsearch
 async function performSemanticSearch(query) {
@@ -88,18 +104,19 @@ async function performSemanticSearch(query) {
   
   try {
     // Send page content and query to background script for Elasticsearch processing
-    const response = await chrome.runtime.sendMessage({
-      action: 'semanticSearch',
-      query: query,
-      content: paragraphs.map(p => ({ text: p.text, id: paragraphs.indexOf(p) }))
-    });
+    await chrome.runtime.sendMessage({
+      action: "semanticSearch",
+      query,
+      content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
+      url: window.location.href,
+    });    
     
-    if (response.success) {
+    if (response && response.success) {
       return response.matches;
     } else {
-      console.error('[peek] Semantic search failed:', response.error);
+      console.error('[peek] Semantic search failed:', response?.error ?? 'Unknown error');
       return [];
-    }
+    }    
   } catch (error) {
     console.error('[peek] Semantic search error:', error);
     return [];
@@ -107,7 +124,7 @@ async function performSemanticSearch(query) {
 }
 
 // Highlight semantic search results
-function highlightSemanticMatches(matches) {
+function highlightSemanticMatches(matches, query) {
   clearHighlights();
   const { paragraphs } = extractPageContent();
   
@@ -117,10 +134,9 @@ function highlightSemanticMatches(matches) {
     
     // Find and highlight the relevant sentences within the paragraph
     const sentences = paragraph.text.split(/[.!?]+/);
-    const relevantSentences = sentences.filter(sentence => 
-      sentence.length > 10 && match.score > 0.5 // Adjust threshold as needed
-    );
-    
+    console.log(`[peek] Match Score: ${match.score} | Text: ${match.text}`);
+    highlightElement(paragraph.element, 'peek-semantic');
+
     // Highlight the entire paragraph or specific sentences
     highlightElement(paragraph.element, 'peek-semantic');
   }
@@ -254,24 +270,60 @@ function goToPrev() {
   scrollToCurrent();
 }
 
-// Enhanced message listener
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
-  if (request.action === "highlightSearch") {
-    searchMode = request.mode || 'keyword';
-    
-    if (searchMode === 'semantic') {
-      const matches = await performSemanticSearch(request.query.trim());
-      highlightSemanticMatches(matches);
-      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'semantic' });
+async function handleSearch(query, mode, sendResponse) {
+  try {
+    let matches = [];
+
+    const { paragraphs } = extractPageContent();
+    const chunks = paragraphs.map((p, idx) => ({ text: p.text, id: idx }));
+
+    if (mode === "semantic") {
+      const response = await chrome.runtime.sendMessage({
+        action: "semanticSearch",
+        query,
+        content: chunks,
+      });
+
+      if (response.success) {
+        matches = response.matches;
+        highlightSemanticMatches(matches, query);  // Use correct highlighter
+      } else {
+        console.warn("[peek] Fallback to keyword search due to error:", response.error);
+        matches = keywordSearch(query);
+        highlightMatches(query);  // Use fallback
+      }
     } else {
-      highlightMatches(request.query.trim());
-      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'keyword' });
+      matches = keywordSearch(query);
+      highlightMatches(query);
     }
-  } else if (request.action === "nextMatch") {
-    goToNext();
-  } else if (request.action === "prevMatch") {
-    goToPrev();
-  } else if (request.action === "clearHighlights") {
+
+    sendResponse({
+      count: matches.length,
+      mode,
+    });
+  } catch (error) {
+    console.error("[peek] Error in handleSearch:", error);
+    sendResponse({ count: 0, mode });
+  }
+}
+
+// Enhanced message listener
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "highlightSearch") {
+    // ✅ Async operation, must return true to keep the port open
+    handleSearch(request.query, request.mode, sendResponse);
+    return true;
+  }
+
+  if (request.action === "nextMatch") {
+    scrollToNext();
+  }
+
+  if (request.action === "prevMatch") {
+    scrollToPrev();
+  }
+
+  if (request.action === "clearHighlights") {
     clearHighlights();
   }
 });

@@ -19,7 +19,7 @@ document.getElementById("searchButton").addEventListener("click", async () => {
   // Show loading state
   resultsDiv.style.display = 'block';
   resultsDiv.innerHTML = `Searching ${currentMode === 'semantic' ? 'semantically' : 'for keywords'}...`;
-  
+
   chrome.tabs.sendMessage(
     tab.id,
     { 
