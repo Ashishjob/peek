@@ -60,7 +60,7 @@ async function ensureIndexExists() {
   }
 }
 
-const HUGGINGFACE_API_KEY = "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";
+const HUGGINGFACE_API_KEY = "";
 
 async function generateEmbedding(text) {
   const res = await fetch(
