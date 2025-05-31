@@ -40,24 +40,24 @@ function extractPageContent() {
     null,
     false
   );
-
+  
   const textNodes = [];
   const paragraphs = [];
   let currentParagraph = '';
-
+  
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
-
+    
     if (!parent || ["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME"].includes(parent.tagName)) {
       continue;
     }
-
+    
     const text = node.nodeValue.trim();
     if (!text) continue;
-
+    
     textNodes.push({ node, text });
-
+    
     // Group text into paragraphs for semantic search
     if (parent.tagName === 'P' || parent.tagName === 'DIV' || parent.tagName === 'SPAN') {
       if (currentParagraph && text) {
@@ -65,9 +65,10 @@ function extractPageContent() {
       } else if (text) {
         currentParagraph = text;
       }
-
+      
+      // End paragraph on block elements
       if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(parent.tagName)) {
-        if (currentParagraph.length > 20) {
+        if (currentParagraph.length > 20) { // Only include substantial paragraphs
           paragraphs.push({
             text: currentParagraph,
             element: parent
@@ -77,26 +78,23 @@ function extractPageContent() {
       }
     }
   }
-
+  async function sendContentToBackground() {
+    const { paragraphs } = extractPageContent();
+    try {
+      await chrome.runtime.sendMessage({
+        action: 'storeEmbeddings',
+        content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
+      });
+      console.log("[peek] Content sent to background for indexing.");
+    } catch (err) {
+      console.error("[peek] Failed to store embeddings:", err);
+    }
+  }
+  
+  sendContentToBackground(); // Call it immediately on load
+  
   return { textNodes, paragraphs };
 }
-
-// ✅ Safe call to store embeddings on page load
-async function sendContentToBackground() {
-  try {
-    const { paragraphs } = extractPageContent();
-    await chrome.runtime.sendMessage({
-      action: 'storeEmbeddings',
-      content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
-    });
-    console.log("[peek] Content sent to background for indexing.");
-  } catch (err) {
-    console.error("[peek] Failed to store embeddings:", err);
-  }
-}
-
-// 👇 Safely trigger it ONCE when content.js loads
-sendContentToBackground();
 
 // Perform semantic search via Elasticsearch
 async function performSemanticSearch(query) {
@@ -104,12 +102,11 @@ async function performSemanticSearch(query) {
   
   try {
     // Send page content and query to background script for Elasticsearch processing
-    await chrome.runtime.sendMessage({
-      action: "semanticSearch",
-      query,
-      content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
-      url: window.location.href,
-    });    
+    const response = await chrome.runtime.sendMessage({
+      action: 'semanticSearch',
+      query: query,
+      content: paragraphs.map(p => ({ text: p.text, id: paragraphs.indexOf(p) }))
+    });
     
     if (response && response.success) {
       return response.matches;
@@ -270,60 +267,24 @@ function goToPrev() {
   scrollToCurrent();
 }
 
-async function handleSearch(query, mode, sendResponse) {
-  try {
-    let matches = [];
-
-    const { paragraphs } = extractPageContent();
-    const chunks = paragraphs.map((p, idx) => ({ text: p.text, id: idx }));
-
-    if (mode === "semantic") {
-      const response = await chrome.runtime.sendMessage({
-        action: "semanticSearch",
-        query,
-        content: chunks,
-      });
-
-      if (response.success) {
-        matches = response.matches;
-        highlightSemanticMatches(matches, query);  // Use correct highlighter
-      } else {
-        console.warn("[peek] Fallback to keyword search due to error:", response.error);
-        matches = keywordSearch(query);
-        highlightMatches(query);  // Use fallback
-      }
-    } else {
-      matches = keywordSearch(query);
-      highlightMatches(query);
-    }
-
-    sendResponse({
-      count: matches.length,
-      mode,
-    });
-  } catch (error) {
-    console.error("[peek] Error in handleSearch:", error);
-    sendResponse({ count: 0, mode });
-  }
-}
-
 // Enhanced message listener
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   if (request.action === "highlightSearch") {
-    // ✅ Async operation, must return true to keep the port open
-    handleSearch(request.query, request.mode, sendResponse);
-    return true;
-  }
-
-  if (request.action === "nextMatch") {
-    scrollToNext();
-  }
-
-  if (request.action === "prevMatch") {
-    scrollToPrev();
-  }
-
-  if (request.action === "clearHighlights") {
+    searchMode = request.mode || 'keyword';
+    
+    if (searchMode === 'semantic') {
+      const matches = await performSemanticSearch(request.query.trim());
+      highlightSemanticMatches(matches, request.query);
+      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'semantic' });
+    } else {
+      highlightMatches(request.query.trim());
+      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'keyword' });
+    }
+  } else if (request.action === "nextMatch") {
+    goToNext();
+  } else if (request.action === "prevMatch") {
+    goToPrev();
+  } else if (request.action === "clearHighlights") {
     clearHighlights();
   }
 });
