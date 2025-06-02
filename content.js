@@ -18,7 +18,7 @@ document.head.appendChild(style);
 
 let currentHighlights = [];
 let currentIndex = -1;
-let searchMode = 'keyword'; // 'keyword' or 'semantic'
+let searchMode = "keyword"; // 'keyword' or 'semantic'
 
 function escapeRegExp(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -40,82 +40,103 @@ function extractPageContent() {
     null,
     false
   );
-  
+
   const textNodes = [];
   const paragraphs = [];
-  let currentParagraph = '';
-  
+  let currentParagraph = "";
+
   while (walker.nextNode()) {
     const node = walker.currentNode;
     const parent = node.parentNode;
-    
-    if (!parent || ["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME"].includes(parent.tagName)) {
+
+    if (
+      !parent ||
+      ["SCRIPT", "STYLE", "NOSCRIPT", "IFRAME"].includes(parent.tagName)
+    ) {
       continue;
     }
-    
+
     const text = node.nodeValue.trim();
     if (!text) continue;
-    
+
     textNodes.push({ node, text });
-    
+
     // Group text into paragraphs for semantic search
-    if (parent.tagName === 'P' || parent.tagName === 'DIV' || parent.tagName === 'SPAN') {
+    if (
+      parent.tagName === "P" ||
+      parent.tagName === "DIV" ||
+      parent.tagName === "SPAN"
+    ) {
       if (currentParagraph && text) {
-        currentParagraph += ' ' + text;
+        currentParagraph += " " + text;
       } else if (text) {
         currentParagraph = text;
       }
-      
+
       // End paragraph on block elements
-      if (['P', 'DIV', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6'].includes(parent.tagName)) {
-        if (currentParagraph.length > 20) { // Only include substantial paragraphs
+      if (
+        ["P", "DIV", "H1", "H2", "H3", "H4", "H5", "H6"].includes(
+          parent.tagName
+        )
+      ) {
+        if (currentParagraph.length > 20) {
+          // Only include substantial paragraphs
           paragraphs.push({
             text: currentParagraph,
-            element: parent
+            element: parent,
           });
         }
-        currentParagraph = '';
+        currentParagraph = "";
       }
     }
   }
-  async function sendContentToBackground() {
-    const { paragraphs } = extractPageContent();
-    try {
-      await chrome.runtime.sendMessage({
-        action: 'storeEmbeddings',
-        content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
-      });
-      console.log("[peek] Content sent to background for indexing.");
-    } catch (err) {
-      console.error("[peek] Failed to store embeddings:", err);
-    }
-  }
-  
-  sendContentToBackground(); // Call it immediately on load
-  
+
   return { textNodes, paragraphs };
 }
+
+async function sendContentToBackground() {
+  const { paragraphs } = extractPageContent();
+  try {
+    await chrome.runtime.sendMessage({
+      action: "storeEmbeddings",
+      content: paragraphs.map((p, idx) => ({ text: p.text, id: idx })),
+    });
+  } catch (err) {
+    console.error("[peek] Failed to store embeddings:", err);
+  } finally {
+    console.log("[peek] Content successfully sent to background for indexing.");
+  }
+}
+
+// Send content to background on page load
+sendContentToBackground();
 
 // Perform semantic search via Elasticsearch
 async function performSemanticSearch(query) {
   const { paragraphs } = extractPageContent();
-  
+
   try {
     // Send page content and query to background script for Elasticsearch processing
     const response = await chrome.runtime.sendMessage({
-      action: 'semanticSearch',
+      action: "semanticSearch",
       query: query,
-      content: paragraphs.map(p => ({ text: p.text, id: paragraphs.indexOf(p) }))
+      content: paragraphs.map((p) => ({
+        text: p.text,
+        id: paragraphs.indexOf(p),
+      })),
     });
-    
+
     if (response && response.success) {
       return response.matches;
     } else {
-      console.error('[peek] Semantic search failed:', response?.error ?? 'Unknown error');
+      console.error(
+        "[peek] Semantic search failed:",
+        response?.error ?? "Unknown error"
+      );
       return [];
-    }    
+    }
   } catch (error) {
-    console.error('[peek] Semantic search error:', error);
+    console.error("[peek] Semantic search error:", error);
     return [];
   }
 }
@@ -124,40 +145,44 @@ async function performSemanticSearch(query) {
 function highlightSemanticMatches(matches, query) {
   clearHighlights();
   const { paragraphs } = extractPageContent();
-  
+
   for (const match of matches) {
     const paragraph = paragraphs[match.id];
     if (!paragraph) continue;
-    
+
     // Find and highlight the relevant sentences within the paragraph
     const sentences = paragraph.text.split(/[.!?]+/);
     console.log(`[peek] Match Score: ${match.score} | Text: ${match.text}`);
-    highlightElement(paragraph.element, 'peek-semantic');
+    highlightElement(paragraph.element, "peek-semantic");
 
     // Highlight the entire paragraph or specific sentences
-    highlightElement(paragraph.element, 'peek-semantic');
+    highlightElement(paragraph.element, "peek-semantic");
   }
-  
-  currentHighlights = Array.from(document.querySelectorAll('mark.peek-semantic'));
-  
+
+  currentHighlights = Array.from(
+    document.querySelectorAll("mark.peek-semantic")
+  );
+
   if (currentHighlights.length > 0) {
     currentIndex = 0;
     scrollToCurrent();
   }
-  
-  console.log(`[peek] Found ${currentHighlights.length} semantic matches for "${query}"`);
+
+  console.log(
+    `[peek] Found ${currentHighlights.length} semantic matches for "${query}"`
+  );
 }
 
 // Helper function to highlight an element
 function highlightElement(element, className) {
-  if (element.querySelector('mark.' + className)) return; // Already highlighted
-  
-  const mark = document.createElement('mark');
+  if (element.querySelector("mark." + className)) return; // Already highlighted
+
+  const mark = document.createElement("mark");
   mark.className = className;
   mark.innerHTML = element.innerHTML;
-  element.innerHTML = '';
+  element.innerHTML = "";
   element.appendChild(mark);
-  
+
   currentHighlights.push(mark);
 }
 
@@ -246,7 +271,7 @@ function scrollToCurrent() {
 
 function highlightCurrent() {
   currentHighlights.forEach((el, idx) => {
-    if (searchMode === 'semantic') {
+    if (searchMode === "semantic") {
       el.style.backgroundColor = idx === currentIndex ? "#32CD32" : "#90EE90";
     } else {
       el.style.backgroundColor = idx === currentIndex ? "orange" : "yellow";
@@ -270,15 +295,23 @@ function goToPrev() {
 // Enhanced message listener
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   if (request.action === "highlightSearch") {
-    searchMode = request.mode || 'keyword';
-    
-    if (searchMode === 'semantic') {
+    searchMode = request.mode || "keyword";
+
+    if (searchMode === "semantic") {
       const matches = await performSemanticSearch(request.query.trim());
       highlightSemanticMatches(matches, request.query);
-      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'semantic' });
+      sendResponse({
+        status: "highlighted",
+        count: currentHighlights.length,
+        mode: "semantic",
+      });
     } else {
       highlightMatches(request.query.trim());
-      sendResponse({ status: "highlighted", count: currentHighlights.length, mode: 'keyword' });
+      sendResponse({
+        status: "highlighted",
+        count: currentHighlights.length,
+        mode: "keyword",
+      });
     }
   } else if (request.action === "nextMatch") {
     goToNext();

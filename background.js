@@ -26,7 +26,8 @@ async function ensureIndexExists() {
     );
 
     if (!healthCheck.ok) {
-      console.warn("[peek] Elasticsearch not accessible");
+      const errorText = await healthCheck.text();
+      console.warn("[peek] Elasticsearch not accessible:", healthCheck.status, errorText);
       return false;
     }
 
@@ -137,22 +138,34 @@ async function storeContentWithEmbeddings(content, url) {
   
         const bulkResponse = await fetch(`${ELASTICSEARCH_CONFIG.url}/_bulk`, {
             method: "POST",
-            headers: getAuthHeaders(),
+            headers: {
+              ...getAuthHeaders(),
+              "Content-Type": "application/x-ndjson",
+            },
             body: bulkBody,
           });
           
           const responseText = await bulkResponse.text();
           console.log("[peek] Bulk response:", responseText);
           
-          if (!bulkResponse.ok || responseText.includes('"errors":true')) {
-            throw new Error("Bulk insert failed: " + responseText);
+          if (!bulkResponse.ok) {
+            console.error("[peek] Bulk request failed with status:", bulkResponse.status);
+            console.error("[peek] Response text:", responseText);
+            throw new Error(`Bulk insert failed with status ${bulkResponse.status}: ${responseText}`);
           }
           
-        console.log("[peek] Bulk response:", responseText);
-  
-        if (!response.ok || responseText.includes('"errors":true')) {
-          throw new Error("Bulk insert failed: " + responseText);
-        }
+          try {
+            const responseJson = JSON.parse(responseText);
+            if (responseJson.errors) {
+              throw new Error("Bulk insert had errors: " + JSON.stringify(responseJson.items.filter(item => item.index && item.index.error)));
+            }
+          } catch (parseError) {
+            if (responseText.includes('"errors":true')) {
+              throw new Error("Bulk insert failed: " + responseText);
+            }
+            // If it's not valid JSON but the request was successful, log a warning
+            console.warn("[peek] Bulk response is not valid JSON, but request was successful");
+          }
   
         console.log(`[peek] Stored ${documents.length / 2} documents in Elasticsearch`);
       } else {
@@ -220,33 +233,36 @@ async function storeContentWithEmbeddings(content, url) {
     }
   }
   
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "semanticSearch") {
-    try {
-      const url = window.location.href;
-      await storeContentWithEmbeddings(request.content, request.url);   
-      const matches = await performSemanticSearch(
-        request.query,
-        request.content
-      );
+    (async () => {
+      try {
+        const url = sender.tab ? sender.tab.url : 'unknown';
+        await storeContentWithEmbeddings(request.content, url);   
+        const matches = await performSemanticSearch(
+          request.query,
+          request.content
+        );
 
-      sendResponse({ success: true, matches, query: request.query });
-    } catch (error) {
-      console.error("[peek] Background script error:", error);
-      sendResponse({ success: false, error: error.message });
-    }
-
+        sendResponse({ success: true, matches, query: request.query });
+      } catch (error) {
+        console.error("[peek] Background script error:", error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
   if (request.action === 'storeEmbeddings') {
-    try {
-      const currentTab = sender.tab;
-      await storeContentWithEmbeddings(request.content, currentTab.url);
-      sendResponse({ success: true });
-    } catch (error) {
-      console.error("[peek] storeEmbeddings error:", error);
-      sendResponse({ success: false, error: error.message });
-    }
+    (async () => {
+      try {
+        const currentTab = sender.tab;
+        await storeContentWithEmbeddings(request.content, currentTab.url);
+        sendResponse({ success: true });
+      } catch (error) {
+        console.error("[peek] storeEmbeddings error:", error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
     return true;
   }
   

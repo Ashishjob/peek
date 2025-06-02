@@ -18,7 +18,8 @@
       "<all_urls>",
       "*://localhost/*",
       "https://api-inference.huggingface.co/*",
-      "https://api.openai.com/*"
+      "https://api.openai.com/*",
+      "https://871b259f3f2c43099b969a06d73cab1b.us-east-1.aws.found.io/*"
     ],
     "action": {
       "default_popup": "popup.html"
